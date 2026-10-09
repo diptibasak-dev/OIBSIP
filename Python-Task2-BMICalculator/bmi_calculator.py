@@ -1,157 +1,243 @@
-import sqlite3
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
+import csv
+import os
+from datetime import datetime
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-# --- Database Setup (SQLite) ---
-def init_db():
-    conn = sqlite3.connect("bmi_records.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            weight REAL NOT NULL,
-            height REAL NOT NULL,
-            bmi REAL NOT NULL,
-            category TEXT NOT NULL,
-            date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CSV_FILE = "bmi_history.csv"
+
+class AdvancedBMITracker:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("BMI Tracker Pro - Health Analytics")
+        self.root.geometry("820x620")
+        self.root.resizable(False, False)
+        self.root.configure(bg="#F1F5F9")
+
+        self.setup_ui()
+        self.load_history_table()
+
+    def setup_ui(self):
+        # Header
+        header = tk.Frame(self.root, bg="#0F172A", height=60)
+        header.pack(fill="x")
+        tk.Label(
+            header,
+            text="BMI Health Tracker & Trend Analyzer",
+            font=("Helvetica", 14, "bold"),
+            fg="#FFFFFF",
+            bg="#0F172A"
+        ).pack(pady=15)
+
+        # Main Layout (Left: Form & Result, Right: History & Graph)
+        content_frame = tk.Frame(self.root, bg="#F1F5F9")
+        content_frame.pack(fill="both", expand=True, padx=20, pady=15)
+
+        left_frame = tk.Frame(content_frame, bg="#F1F5F9", width=360)
+        left_frame.pack(side="left", fill="y", padx=(0, 15))
+
+        right_frame = tk.Frame(content_frame, bg="#F1F5F9", width=420)
+        right_frame.pack(side="right", fill="both", expand=True)
+
+        # --- LEFT: INPUT CARD ---
+        card = tk.Frame(left_frame, bg="#FFFFFF", highlightthickness=1, highlightbackground="#CBD5E1")
+        card.pack(fill="x", ipady=8)
+
+        tk.Label(card, text="Full Name", font=("Helvetica", 9, "bold"), bg="#FFFFFF", fg="#334155").pack(anchor="w", padx=15, pady=(8, 2))
+        self.entry_name = tk.Entry(card, font=("Helvetica", 10), highlightthickness=1, highlightbackground="#CBD5E1")
+        self.entry_name.pack(fill="x", padx=15, ipady=4)
+
+        # Weight with Unit
+        tk.Label(card, text="Weight", font=("Helvetica", 9, "bold"), bg="#FFFFFF", fg="#334155").pack(anchor="w", padx=15, pady=(8, 2))
+        w_box = tk.Frame(card, bg="#FFFFFF")
+        w_box.pack(fill="x", padx=15)
+        self.entry_weight = tk.Entry(w_box, font=("Helvetica", 10), width=18, highlightthickness=1, highlightbackground="#CBD5E1")
+        self.entry_weight.pack(side="left", ipady=4)
+        self.weight_unit = ttk.Combobox(w_box, values=["kg", "lbs"], width=6, state="readonly")
+        self.weight_unit.set("kg")
+        self.weight_unit.pack(side="right")
+
+        # Height with Unit
+        tk.Label(card, text="Height", font=("Helvetica", 9, "bold"), bg="#FFFFFF", fg="#334155").pack(anchor="w", padx=15, pady=(8, 2))
+        h_box = tk.Frame(card, bg="#FFFFFF")
+        h_box.pack(fill="x", padx=15)
+        self.entry_height = tk.Entry(h_box, font=("Helvetica", 10), width=18, highlightthickness=1, highlightbackground="#CBD5E1")
+        self.entry_height.pack(side="left", ipady=4)
+        self.height_unit = ttk.Combobox(h_box, values=["meters", "cm", "feet"], width=6, state="readonly")
+        self.height_unit.set("meters")
+        self.height_unit.pack(side="right")
+
+        # Action Buttons
+        btn_calc = tk.Button(
+            left_frame,
+            text="Calculate & Save",
+            command=self.calculate_bmi,
+            font=("Helvetica", 10, "bold"),
+            bg="#2563EB",
+            fg="#FFFFFF",
+            relief="flat",
+            cursor="hand2"
         )
-    """)
-    conn.commit()
-    conn.close()
+        btn_calc.pack(fill="x", pady=10, ipady=4)
 
-# --- Calculate BMI & Save to DB ---
-def calculate_bmi():
-    name = entry_name.get().strip()
-    weight_str = entry_weight.get().strip()
-    height_str = entry_height.get().strip()
+        # Result Card
+        self.result_card = tk.Frame(left_frame, bg="#FFFFFF", highlightthickness=1, highlightbackground="#CBD5E1")
+        self.result_card.pack(fill="x", ipady=8)
 
-    # Input Validation
-    if not name:
-        messagebox.showerror("Error", "Please enter your name.")
-        return
+        self.lbl_bmi_val = tk.Label(self.result_card, text="--", font=("Helvetica", 22, "bold"), bg="#FFFFFF", fg="#64748B")
+        self.lbl_bmi_val.pack()
 
-    try:
-        weight = float(weight_str)
-        height = float(height_str)
+        self.lbl_category = tk.Label(self.result_card, text="Awaiting calculation", font=("Helvetica", 10), bg="#FFFFFF", fg="#64748B")
+        self.lbl_category.pack()
 
-        if weight <= 0 or height <= 0:
-            messagebox.showerror("Error", "Weight and Height must be positive numbers.")
+        # View Trend Graph Button
+        btn_graph = tk.Button(
+            left_frame,
+            text="📈 Show User Trend Graph",
+            command=self.open_trend_window,
+            font=("Helvetica", 10),
+            bg="#0284C7",
+            fg="#FFFFFF",
+            relief="flat",
+            cursor="hand2"
+        )
+        btn_graph.pack(fill="x", pady=10, ipady=4)
+
+        # --- RIGHT: RECORD HISTORY TABLE ---
+        table_frame = tk.Frame(right_frame, bg="#FFFFFF", highlightthickness=1, highlightbackground="#CBD5E1")
+        table_frame.pack(fill="both", expand=True)
+
+        tk.Label(table_frame, text="Saved Logs (Recent Records)", font=("Helvetica", 10, "bold"), bg="#FFFFFF", fg="#1E293B").pack(anchor="w", padx=10, pady=8)
+
+        columns = ("Time", "Name", "BMI", "Category")
+        self.tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=15)
+        self.tree.heading("Time", text="Date")
+        self.tree.heading("Name", text="Name")
+        self.tree.heading("BMI", text="BMI")
+        self.tree.heading("Category", text="Status")
+
+        self.tree.column("Time", width=85, anchor="center")
+        self.tree.column("Name", width=95, anchor="w")
+        self.tree.column("BMI", width=55, anchor="center")
+        self.tree.column("Category", width=105, anchor="center")
+
+        self.tree.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+    def calculate_bmi(self):
+        name = self.entry_name.get().strip()
+        w_str = self.entry_weight.get().strip()
+        h_str = self.entry_height.get().strip()
+
+        if not name:
+            messagebox.showwarning("Input Error", "Please provide a name.")
             return
-    except ValueError:
-        messagebox.showerror("Error", "Please enter valid numeric values for weight and height.")
-        return
 
-    # BMI Formula: weight (kg) / (height (m) ^ 2)
-    bmi = weight / (height ** 2)
-    bmi = round(bmi, 2)
+        try:
+            w = float(w_str)
+            h = float(h_str)
 
-    # Classify Category and Color
-    if bmi < 18.5:
-        category = "Underweight"
-        color = "#1E90FF"  # Dodger Blue
-    elif 18.5 <= bmi < 25:
-        category = "Normal"
-        color = "#2E8B57"  # Sea Green
-    elif 25 <= bmi < 30:
-        category = "Overweight"
-        color = "#FFA500"  # Orange
-    else:
-        category = "Obese"
-        color = "#DC143C"  # Crimson Red
+            if w <= 0 or h <= 0:
+                messagebox.showerror("Error", "Weight and height must be positive values.")
+                return
 
-    # Update GUI Display
-    label_result.config(
-        text=f"BMI: {bmi} ({category})",
-        fg=color
-    )
+            # Convert Weight to kg
+            if self.weight_unit.get() == "lbs":
+                w = w * 0.453592
 
-    # Save to SQLite Database
-    try:
-        conn = sqlite3.connect("bmi_records.db")
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO records (name, weight, height, bmi, category) VALUES (?, ?, ?, ?, ?)",
-            (name, weight, height, bmi, category)
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        messagebox.showerror("Database Error", f"Failed to save record: {e}")
+            # Convert Height to meters
+            if self.height_unit.get() == "cm":
+                h = h / 100.0
+            elif self.height_unit.get() == "feet":
+                h = h * 0.3048
 
-# --- View Historical Trend Graph ---
-def view_trend():
-    name = entry_name.get().strip()
-    if not name:
-        messagebox.showerror("Error", "Enter a name to view historical BMI trend.")
-        return
+            bmi = round(w / (h ** 2), 2)
 
-    conn = sqlite3.connect("bmi_records.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT bmi, date FROM records WHERE LOWER(name) = LOWER(?) ORDER BY id ASC", (name,))
-    data = cursor.fetchall()
-    conn.close()
+            # Categorize
+            if bmi < 18.5:
+                cat, color = "Underweight", "#3B82F6"
+            elif 18.5 <= bmi <= 24.9:
+                cat, color = "Normal Weight", "#10B981"
+            elif 25.0 <= bmi <= 29.9:
+                cat, color = "Overweight", "#F59E0B"
+            else:
+                cat, color = "Obese", "#EF4444"
 
-    if not data:
-        messagebox.showinfo("No Data", f"No records found for '{name}'.")
-        return
+            self.lbl_bmi_val.config(text=str(bmi), fg=color)
+            self.lbl_category.config(text=f"Status: {cat}", fg=color)
 
-    bmi_values = [row[0] for row in data]
-    attempts = list(range(1, len(bmi_values) + 1))
+            # Persist and refresh
+            self.save_record(name, round(w, 1), round(h, 2), bmi, cat)
+            self.load_history_table()
 
-    # Matplotlib Graph Plotting
-    plt.figure(figsize=(7, 4))
-    plt.plot(attempts, bmi_values, marker='o', color='#4B0082', linewidth=2, label="BMI")
-    plt.axhline(18.5, color='blue', linestyle='--', alpha=0.6, label='Underweight (<18.5)')
-    plt.axhline(25, color='green', linestyle='--', alpha=0.6, label='Normal (18.5-24.9)')
-    plt.axhline(30, color='red', linestyle='--', alpha=0.6, label='Obese (>=30)')
-    plt.title(f"BMI History for {name}")
-    plt.xlabel("Entry #")
-    plt.ylabel("BMI")
-    plt.grid(True, linestyle=":", alpha=0.6)
-    plt.legend(loc="upper right")
-    plt.tight_layout()
-    plt.show()
+        except ValueError:
+            messagebox.showerror("Invalid Input", "Please enter valid numeric figures.")
 
-# --- Initialize DB ---
-init_db()
+    def save_record(self, name, weight, height, bmi, category):
+        file_exists = os.path.isfile(CSV_FILE)
+        with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(["Timestamp", "Name", "Weight_kg", "Height_m", "BMI", "Category"])
+            writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M"), name, weight, height, bmi, category])
 
-# --- GUI Window ---
-root = tk.Tk()
-root.title("OIBSIP - BMI Calculator")
-root.geometry("380x420")
-root.resizable(False, False)
+    def load_history_table(self):
+        for item in self.tree.get_children():
+            self.tree.delete(item)
 
-title_lbl = tk.Label(root, text="BMI Calculator", font=("Arial", 16, "bold"))
-title_lbl.pack(pady=15)
+        if not os.path.isfile(CSV_FILE):
+            return
 
-# Form Fields
-frame = tk.Frame(root)
-frame.pack(pady=5)
+        with open(CSV_FILE, "r", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            header = next(reader, None)
+            for row in reader:
+                if len(row) >= 6:
+                    self.tree.insert("", 0, values=(row[0].split()[0], row[1], row[4], row[5]))
 
-tk.Label(frame, text="User Name:", font=("Arial", 10)).grid(row=0, column=0, sticky="w", pady=6)
-entry_name = tk.Entry(frame, width=22)
-entry_name.grid(row=0, column=1, pady=6)
+    def open_trend_window(self):
+        target_name = self.entry_name.get().strip()
+        if not target_name:
+            messagebox.showwarning("Warning", "Enter a user name in the input box to see their trend.")
+            return
 
-tk.Label(frame, text="Weight (kg):", font=("Arial", 10)).grid(row=1, column=0, sticky="w", pady=6)
-entry_weight = tk.Entry(frame, width=22)
-entry_weight.grid(row=1, column=1, pady=6)
+        dates, bmis = [], []
+        if os.path.isfile(CSV_FILE):
+            with open(CSV_FILE, "r", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                next(reader, None)
+                for row in reader:
+                    if len(row) >= 6 and row[1].lower() == target_name.lower():
+                        dates.append(row[0].split()[0])
+                        bmis.append(float(row[4]))
 
-tk.Label(frame, text="Height (m):", font=("Arial", 10)).grid(row=2, column=0, sticky="w", pady=6)
-entry_height = tk.Entry(frame, width=22)
-entry_height.grid(row=2, column=1, pady=6)
+        if len(bmis) < 2:
+            messagebox.showinfo("Need More Data", f"At least 2 records are required for {target_name} to render a trend graph.")
+            return
 
-# Buttons
-btn_calc = tk.Button(root, text="Calculate BMI", font=("Arial", 10, "bold"), bg="#4CAF50", fg="white", width=18, command=calculate_bmi)
-btn_calc.pack(pady=12)
+        # Render Pop-up Graph
+        trend_win = tk.Toplevel(self.root)
+        trend_win.title(f"BMI Progress - {target_name}")
+        trend_win.geometry("520x400")
 
-# Result Feedback
-label_result = tk.Label(root, text="Enter details and click Calculate", font=("Arial", 11, "bold"), fg="gray")
-label_result.pack(pady=8)
+        fig, ax = plt.subplots(figsize=(5, 3.5), dpi=100)
+        ax.plot(dates, bmis, marker='o', color='#2563EB', linewidth=2, label="BMI")
+        ax.axhline(y=18.5, color='#3B82F6', linestyle='--', alpha=0.5, label="Underweight (18.5)")
+        ax.axhline(y=24.9, color='#10B981', linestyle='--', alpha=0.5, label="Normal Max (24.9)")
+        ax.axhline(y=29.9, color='#EF4444', linestyle='--', alpha=0.5, label="Overweight Max (29.9)")
 
-# Historical Trend Button
-btn_trend = tk.Button(root, text="View BMI Trend", font=("Arial", 10), bg="#2196F3", fg="white", width=18, command=view_trend)
-btn_trend.pack(pady=10)
+        ax.set_title(f"BMI History for {target_name}", fontsize=11, fontweight="bold")
+        ax.set_ylabel("BMI Value")
+        ax.tick_params(axis='x', rotation=30)
+        ax.legend(loc="upper left", fontsize=8)
+        fig.tight_layout()
 
-root.mainloop()
+        canvas = FigureCanvasTkAgg(fig, master=trend_win)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = AdvancedBMITracker(root)
+    root.mainloop()
