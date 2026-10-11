@@ -8,332 +8,225 @@ import pyttsx3
 import wikipedia
 import random
 import subprocess
+import os
 
-# Color Palette (Aesthetic Cyber Dark)
-BG_MAIN = "#0B0F19"
-CARD_BG = "#161F30"
-BORDER_CLR = "#233048"
-ACCENT_PRIMARY = "#6366F1"  # Indigo
-ACCENT_ACTIVE = "#EF4444"   # Red during recording
-TEXT_MAIN = "#F8FAFC"
-TEXT_MUTED = "#94A3B8"
-USER_MSG_CLR = "#38BDF8"
+def speak(text):
+    """Function to speak out text safely by initializing engine locally to avoid thread lockups."""
+    try:
+        engine = pyttsx3.init()
+        voices = engine.getProperty('voices')
+        if len(voices) > 1:
+            engine.setProperty('voice', voices[1].id)  # Female voice if available
+        else:
+            engine.setProperty('voice', voices[0].id)
+            
+        clean_text = text.replace("Aura:", "").strip()
+        engine.say(clean_text)
+        engine.runAndWait()
+    except Exception as e:
+        print(f"Speech error: {e}")
 
 class VoiceAssistantGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Aura AI • Voice & Text Assistant")
-        self.root.geometry("480x720")
-        self.root.resizable(False, False)
-        self.root.configure(bg=BG_MAIN)
+        self.root.title("AURA ASSISTANT")
+        self.root.geometry("500x600")
+        self.root.configure(bg="#0B0F19")
 
-        # Initialize TTS Engine safely
-        try:
-            self.engine = pyttsx3.init()
-            self.engine.setProperty("rate", 165)
-            voices = self.engine.getProperty("voices")
-            if len(voices) > 1:
-                self.engine.setProperty("voice", voices[1].id)
-        except Exception:
-            self.engine = None
+        # Color Palette (Aesthetic Cyber Dark)
+        self.BG_MAIN = "#0B0F19"
+        self.CARD_BG = "#161F30"
+        self.BORDER_CLR = "#233048"
+        self.ACCENT_PRIMARY = "#6366F1"  # Indigo
+        self.ACCENT_ACTIVE = "#EF4444"   # Red during recording
+        self.TEXT_MAIN = "#F8FAFC"
+        self.TEXT_MUTED = "#94A3B8"
+        self.USER_MSG_CLR = "#38BDF8"
 
-        self.is_listening = False
-        self.setup_ui()
-        self.speak_async("Hello! I am Aura, your assistant. You can speak or type your commands.")
-
-    def setup_ui(self):
-        # Header
-        header = tk.Frame(self.root, bg=BG_MAIN)
-        header.pack(fill="x", pady=(15, 8), padx=25)
-
-        tk.Label(
-            header,
-            text="AURA ASSISTANT",
-            font=("Helvetica", 13, "bold"),
-            fg=TEXT_MAIN,
-            bg=BG_MAIN
-        ).pack(side="left")
-
-        # Chat / Transcript Screen
-        self.chat_card = tk.Frame(self.root, bg=CARD_BG, highlightthickness=1, highlightbackground=BORDER_CLR)
-        self.chat_card.pack(fill="both", expand=True, padx=25, pady=8)
-
-        self.chat_box = scrolledtext.ScrolledText(
-            self.chat_card,
-            wrap=tk.WORD,
-            font=("Helvetica", 10),
-            bg=CARD_BG,
-            fg=TEXT_MAIN,
-            insertbackground=TEXT_MAIN,
-            relief="flat",
-            bd=0,
-            padx=12,
-            pady=12
+        # Title / Header
+        title_label = tk.Label(
+            root, text="AURA ASSISTANT", 
+            font=("Arial", 16, "bold"), 
+            bg=self.BG_MAIN, fg=self.ACCENT_PRIMARY
         )
-        self.chat_box.pack(fill="both", expand=True)
-        self.chat_box.config(state="disabled")
+        title_label.pack(side=tk.TOP, pady=10)
 
-        # Text Input Frame (Written Command Box)
-        input_frame = tk.Frame(self.root, bg=BG_MAIN)
-        input_frame.pack(fill="x", padx=25, pady=6)
-
-        self.entry_text = Entry(
-            input_frame,
-            font=("Helvetica", 11),
-            bg=CARD_BG,
-            fg=TEXT_MAIN,
-            insertbackground=TEXT_MAIN,
-            relief="flat",
-            highlightthickness=1,
-            highlightbackground=BORDER_CLR
+        # Status Label
+        self.status_label = tk.Label(
+            root, text="Status: Idle", 
+            font=("Arial", 10), 
+            bg=self.BG_MAIN, fg=self.TEXT_MUTED
         )
-        self.entry_text.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 8))
-        self.entry_text.bind("<Return>", lambda e: self.handle_text_input())
+        self.status_label.pack(side=tk.BOTTOM, pady=5)
 
-        btn_send = tk.Button(
-            input_frame,
-            text="Send",
-            command=self.handle_text_input,
-            font=("Helvetica", 9, "bold"),
-            bg=ACCENT_PRIMARY,
-            fg=TEXT_MAIN,
-            activebackground="#4F46E5",
-            activeforeground=TEXT_MAIN,
-            relief="flat",
-            bd=0,
-            cursor="hand2",
-            padx=12,
-            pady=6
+        # Frame for Input, Send Button & Speak Button
+        input_frame = tk.Frame(root, bg=self.BG_MAIN)
+        input_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=15, pady=5)
+
+        self.user_entry = Entry(
+            input_frame, font=("Arial", 12),
+            bg=self.CARD_BG, fg=self.TEXT_MAIN,
+            insertbackground='white'
         )
-        btn_send.pack(side="right")
+        self.user_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        self.user_entry.bind("<Return>", lambda event: self.process_text_input())
 
-        # Bottom Controls (Microphone & Status)
-        controls = tk.Frame(self.root, bg=BG_MAIN)
-        controls.pack(fill="x", padx=25, pady=(6, 20))
-
-        self.lbl_status = tk.Label(
-            controls,
-            text="Status: Idle",
-            font=("Helvetica", 9),
-            bg=BG_MAIN,
-            fg=TEXT_MUTED
+        send_btn = tk.Button(
+            input_frame, text="Send", 
+            command=self.process_text_input,
+            bg=self.ACCENT_PRIMARY, fg="white",
+            font=("Arial", 10, "bold"), relief=tk.FLAT, padx=8
         )
-        self.lbl_status.pack(pady=2)
+        send_btn.pack(side=tk.LEFT, padx=(0, 5))
 
-        self.btn_mic = tk.Button(
-            controls,
-            text="🎙️ Tap to Speak",
-            command=self.trigger_listening,
-            font=("Helvetica", 10, "bold"),
-            bg=ACCENT_PRIMARY,
-            fg=TEXT_MAIN,
-            activebackground="#4F46E5",
-            activeforeground=TEXT_MAIN,
-            relief="flat",
-            bd=0,
-            cursor="hand2",
-            padx=20,
-            pady=8
+        speak_btn = tk.Button(
+            input_frame, text="🎙️ Speak", 
+            command=self.start_listening_thread,
+            bg=self.ACCENT_ACTIVE, fg="white",
+            font=("Arial", 10, "bold"), relief=tk.FLAT, padx=8
         )
-        self.btn_mic.pack(pady=4)
+        speak_btn.pack(side=tk.LEFT)
 
-    def log_message(self, sender, text):
-        def _update():
-            self.chat_box.config(state="normal")
-            self.chat_box.insert(tk.END, f"{sender}: {text}\n\n")
-            self.chat_box.see(tk.END)
-            self.chat_box.config(state="disabled")
-        self.root.after(0, _update)
+        # Chat History Box
+        self.chat_display = scrolledtext.ScrolledText(
+            root, wrap=tk.WORD, state='disabled',
+            bg=self.CARD_BG, fg=self.TEXT_MAIN,
+            font=("Arial", 11), insertbackground='white'
+        )
+        self.chat_display.pack(side=tk.TOP, padx=15, pady=5, fill=tk.BOTH, expand=True)
 
-    def speak(self, text):
-        self.log_message("Aura", text)
-        if self.engine:
+        # Greet on startup
+        welcome_text = "Aura: Hello! I am Aura, your assistant. You can speak or type your commands."
+        self.append_chat(welcome_text)
+        threading.Thread(target=lambda: speak("Hello! I am Aura, your assistant.")).start()
+
+    def append_chat(self, message):
+        self.chat_display.configure(state='normal')
+        self.chat_display.insert(tk.END, message + "\n\n")
+        self.chat_display.configure(state='disabled')
+        self.chat_display.see(tk.END)
+
+    def process_text_input(self):
+        text = self.user_entry.get().strip()
+        if text:
+            self.append_chat(f"You (Typed): {text}")
+            self.user_entry.delete(0, tk.END)
+            threading.Thread(target=self.handle_command, args=(text,)).start()
+
+    def start_listening_thread(self):
+        threading.Thread(target=self.listen_from_mic).start()
+
+    def listen_from_mic(self):
+        r = sr.Recognizer()
+        with sr.Microphone() as source:
+            self.status_label.config(text="Status: Listening...", fg="#EF4444")
             try:
-                self.engine.say(text)
-                self.engine.runAndWait()
-            except Exception:
-                pass
+                audio = r.listen(source, timeout=5, phrase_time_limit=5)
+                self.status_label.config(text="Status: Processing...", fg="#F59E0B")
+                query = r.recognize_google(audio, language='en-in')
+                self.append_chat(f"You (Voice): {query}")
+                self.status_label.config(text="Status: Idle", fg="#94A3B8")
+                self.handle_command(query)
+            except sr.WaitTimeoutError:
+                self.status_label.config(text="Status: Idle", fg="#94A3B8")
+                response = "Aura: Listening timed out. Please try again."
+                self.append_chat(response)
+                threading.Thread(target=lambda: speak(response)).start()
+            except Exception as e:
+                self.status_label.config(text="Status: Idle", fg="#94A3B8")
+                response = "Aura: Sorry, I could not understand your voice."
+                self.append_chat(response)
+                threading.Thread(target=lambda: speak(response)).start()
 
-    def speak_async(self, text):
-        threading.Thread(target=self.speak, args=(text,), daemon=True).start()
-
-    def handle_text_input(self):
-        text = self.entry_text.get().strip()
-        if not text:
-            return
-        self.entry_text.delete(0, tk.END)
-        self.log_message("You (Typed)", text)
-        threading.Thread(target=self.execute_command, args=(text.lower(),), daemon=True).start()
-
-    def trigger_listening(self):
-        if not self.is_listening:
-            threading.Thread(target=self.listen_and_process, daemon=True).start()
-
-    def listen_and_process(self):
-        self.is_listening = True
-        self.root.after(0, lambda: self.lbl_status.config(text="Status: Listening...", fg=USER_MSG_CLR))
-        self.root.after(0, lambda: self.btn_mic.config(bg=ACCENT_ACTIVE, text="Listening..."))
-
-        recognizer = sr.Recognizer()
-        try:
-            with sr.Microphone() as source:
-                recognizer.adjust_for_ambient_noise(source, duration=0.8)
-                self.root.after(0, lambda: self.lbl_status.config(text="Status: Processing...", fg=ACCENT_PRIMARY))
-                audio = recognizer.listen(source, timeout=5, phrase_time_limit=6)
-                cmd = recognizer.recognize_google(audio).lower()
-                self.log_message("You (Voice)", cmd)
-                self.execute_command(cmd)
-        except sr.WaitTimeoutError:
-            self.speak("I didn't hear anything.")
-        except sr.UnknownValueError:
-            self.speak("Sorry, I couldn't understand that.")
-        except Exception:
-            self.speak("Microphone or network connection error.")
-
-        self.root.after(0, lambda: self.lbl_status.config(text="Status: Idle", fg=TEXT_MUTED))
-        self.root.after(0, lambda: self.btn_mic.config(bg=ACCENT_PRIMARY, text="🎙️ Tap to Speak"))
-        self.is_listening = False
-
-    def execute_command(self, cmd):
-        if hasattr(self, '_last_cmd') and self._last_cmd == cmd:
-            return
-        self._last_cmd = cmd
-
-        # 1. Greetings & Casual Chat (No browser open)
-        if cmd in ["hi", "hello", "hey", "hii", "gm", "good morning"]:
-            self.speak("Hello! How can I help you today?")
-        elif "kemon acho" in cmd or "how are you" in cmd:
-            self.speak("Ami valo achhi! Apni kemon achen?")
-        elif "thank you" in cmd or "thanks" in cmd:
-            self.speak("You're welcome! Let me know if you need anything else.")
+    def handle_command(self, command):
+        cmd = command.lower()
         
-        # 2. Time & Date
-        elif "time" in cmd:
-            now = datetime.datetime.now().strftime("%I:%M %p")
-            self.speak(f"The current time is {now}")
-        elif "date" in cmd or "today" in cmd:
-            today = datetime.datetime.now().strftime("%B %d, %Y")
-            self.speak(f"Today is {today}")
-        
-        # 3. Open System Apps & Tools
-        elif "notepad" in cmd:
-            self.speak("Opening Notepad")
-            subprocess.Popen(["notepad.exe"])
-        elif "calculator" in cmd or "calc" in cmd:
-            self.speak("Opening Calculator")
-            subprocess.Popen(["calc.exe"])
-        elif "paint" in cmd:
-            self.speak("Opening Paint")
-            subprocess.Popen(["mspaint.exe"])
-        elif "command prompt" in cmd or "cmd" in cmd:
-            self.speak("Opening Command Prompt")
-            subprocess.Popen(["cmd.exe"])
-        elif "explorer" in cmd or "files" in cmd or "this pc" in cmd:
-            self.speak("Opening File Explorer")
-            subprocess.Popen(["explorer.exe"])
-        elif "task manager" in cmd:
-            self.speak("Opening Task Manager")
-            subprocess.Popen(["taskmgr.exe"])
-        elif "control panel" in cmd:
-            self.speak("Opening Control Panel")
-            subprocess.Popen(["control.exe"])
-        elif "media player" in cmd or "windows media player" in cmd:
-            self.speak("Opening Media Player")
-            subprocess.Popen(["wmplayer.exe"])
-        elif "settings" in cmd:
-            self.speak("Opening Windows Settings")
-            subprocess.Popen(["start", "ms-settings:"], shell=True)
-        elif "visual studio code" in cmd or "vs code" in cmd or "code" in cmd:
-            self.speak("Opening Visual Studio Code")
-            subprocess.Popen(["code"])
-        elif "word" in cmd or "microsoft word" in cmd:
-            self.speak("Opening Microsoft Word")
-            subprocess.Popen(["winword.exe"])
-        elif "excel" in cmd or "microsoft excel" in cmd:
-            self.speak("Opening Microsoft Excel")
-            subprocess.Popen(["excel.exe"])
-        elif "powershell" in cmd:
-            self.speak("Opening PowerShell")
-            subprocess.Popen(["powershell.exe"])
-        elif "camera" in cmd:
-            self.speak("Opening Camera")
-            subprocess.Popen(["start", "microsoft.windows.camera:"], shell=True)
-        elif "snipping tool" in cmd or "screenshot tool" in cmd:
-            self.speak("Opening Snipping Tool")
-            subprocess.Popen(["SnippingTool.exe"])
-        
-        # 4. Open Specific Websites & Social Media
-        elif cmd in ["open github", "github"]:
-            self.speak("Opening GitHub")
-            webbrowser.open("https://github.com", new=2)
-        elif cmd in ["open youtube", "youtube"]:
-            self.speak("Opening YouTube")
-            webbrowser.open("https://youtube.com", new=2)
-        elif cmd in ["open facebook", "facebook"]:
-            self.speak("Opening Facebook")
-            webbrowser.open("https://facebook.com", new=2)
-        elif cmd in ["open chatgpt", "chatgpt"]:
-            self.speak("Opening ChatGPT")
-            webbrowser.open("https://chatgpt.com", new=2)
-        elif cmd in ["open instagram", "instagram"]:
-            self.speak("Opening Instagram")
-            webbrowser.open("https://instagram.com", new=2)
-        elif cmd in ["open spotify", "spotify"]:
-            self.speak("Opening Spotify")
-            webbrowser.open("https://open.spotify.com", new=2)
-        elif cmd in ["open twitter", "open x", "twitter", "x"]:
-            self.speak("Opening Twitter")
-            webbrowser.open("https://twitter.com", new=2)
-        elif cmd in ["open linkedin", "linkedin"]:
-            self.speak("Opening LinkedIn")
-            webbrowser.open("https://linkedin.com", new=2)
-        elif cmd in ["open reddit", "reddit"]:
-            self.speak("Opening Reddit")
-            webbrowser.open("https://reddit.com", new=2)
-        elif cmd in ["open whatsapp", "whatsapp"]:
-            self.speak("Opening WhatsApp Web")
-            webbrowser.open("https://web.whatsapp.com", new=2)
-        
-        # 5. YouTube Video Play / Search
-        elif "play" in cmd or ("youtube" in cmd and len(cmd) > 7):
-            query = cmd.replace("youtube", "").replace("play", "").strip()
-            self.speak(f"Playing {query if query else 'videos'} on YouTube")
-            url = f"https://www.youtube.com/results?search_query={query}" if query else "https://www.youtube.com"
-            webbrowser.open(url, new=2)
-        
-        # 6. Wikipedia Information
-        elif "who is" in cmd or "what is" in cmd or "tell me about" in cmd:
-            query = cmd.replace("who is", "").replace("what is", "").replace("tell me about", "").strip()
+        # Time command
+        if "time" in cmd:
+            current_time = datetime.datetime.now().strftime("%I:%M %p")
+            response = f"Aura: The current time is {current_time}"
+            self.append_chat(response)
+            threading.Thread(target=lambda: speak(response)).start()
+            
+        # Date command
+        elif "date" in cmd:
+            current_date = datetime.datetime.now().strftime("%B %d, %Y")
+            response = f"Aura: Today's date is {current_date}"
+            self.append_chat(response)
+            threading.Thread(target=lambda: speak(response)).start()
+
+        # Open Websites
+        elif "open google" in cmd:
+            response = "Aura: Opening Google for you."
+            self.append_chat(response)
+            webbrowser.open("https://www.google.com")
+            threading.Thread(target=lambda: speak(response)).start()
+            
+        elif "open youtube" in cmd:
+            response = "Aura: Opening YouTube for you."
+            self.append_chat(response)
+            webbrowser.open("https://www.youtube.com")
+            threading.Thread(target=lambda: speak(response)).start()
+            
+        elif "open facebook" in cmd:
+            response = "Aura: Opening Facebook for you."
+            self.append_chat(response)
+            webbrowser.open("https://www.facebook.com")
+            threading.Thread(target=lambda: speak(response)).start()
+            
+        elif "open github" in cmd:
+            response = "Aura: Opening GitHub for you."
+            self.append_chat(response)
+            webbrowser.open("https://www.github.com")
+            threading.Thread(target=lambda: speak(response)).start()
+            
+        elif "open stackoverflow" in cmd:
+            response = "Aura: Opening Stack Overflow for you."
+            self.append_chat(response)
+            webbrowser.open("https://stackoverflow.com")
+            threading.Thread(target=lambda: speak(response)).start()
+
+        # Open System Apps / Tools
+        elif "open notepad" in cmd:
+            response = "Aura: Opening Notepad."
+            self.append_chat(response)
+            subprocess.Popen(['notepad.exe'])
+            threading.Thread(target=lambda: speak(response)).start()
+            
+        elif "open calculator" in cmd:
+            response = "Aura: Opening Calculator."
+            self.append_chat(response)
+            subprocess.Popen(['calc.exe'])
+            threading.Thread(target=lambda: speak(response)).start()
+            
+        elif "open cmd" in cmd or "command prompt" in cmd:
+            response = "Aura: Opening Command Prompt."
+            self.append_chat(response)
+            subprocess.Popen(['cmd.exe'])
+            threading.Thread(target=lambda: speak(response)).start()
+
+        # Wikipedia Search
+        elif "wikipedia" in cmd or "search" in cmd:
+            search_msg = "Aura: Searching Wikipedia..."
+            self.append_chat(search_msg)
+            threading.Thread(target=lambda: speak("Searching Wikipedia")).start()
             try:
-                summary = wikipedia.summary(query, sentences=2)
-                self.speak(summary)
-            except Exception:
-                self.speak(f"Searching web for {query}")
-                webbrowser.open(f"https://www.google.com/search?q={query}", new=2)
-        
-        # 7. General Google Search
-        elif "search" in cmd or "google" in cmd:
-            query = cmd.replace("search", "").replace("google", "").strip()
-            self.speak(f"Searching Google for {query}")
-            webbrowser.open(f"https://www.google.com/search?q={query}", new=2)
-        
-        # 8. Fun Feature: Jokes
-        elif "joke" in cmd:
-            jokes = [
-                "Why don't scientists trust atoms? Because they make up everything!",
-                "Why did the computer sneeze? Because it had a virus!",
-                "In a world of algorithms, be a human!"
-            ]
-            self.speak(random.choice(jokes))
-            
-        # 9. Exit Command
-        elif "exit" in cmd or "stop" in cmd or "bye" in cmd:
-            self.speak("Goodbye! Have a great day.")
-            self.root.after(1500, self.root.destroy)
-            
-        # 10. Fallback (Safe response without random browser opening)
+                query = cmd.replace("wikipedia", "").replace("search", "").strip()
+                result = wikipedia.summary(query, sentences=2)
+                response = f"Aura: {result}"
+                self.append_chat(response)
+                threading.Thread(target=lambda: speak(response)).start()
+            except Exception as e:
+                response = "Aura: Sorry, I couldn't find anything on Wikipedia."
+                self.append_chat(response)
+                threading.Thread(target=lambda: speak(response)).start()
+                
+        # Default Google Search fallback
         else:
-            self.speak(f"I am not sure about '{cmd}'. You can ask me to search Google or open an app.")
+            response = f"Aura: Searching Google for {command}."
+            self.append_chat(response)
+            webbrowser.open(f"https://www.google.com/search?q={command}")
+            threading.Thread(target=lambda: speak(response)).start()
 
 if __name__ == "__main__":
     root = tk.Tk()

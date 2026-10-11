@@ -1,24 +1,28 @@
-# AI Voice Assistant - Python Programming (Oasis Infobyte Internship)
+# 🌟 AURA Assistant
 
-An interactive desktop-based voice assistant built in Python that listens to spoken commands, processes natural language, and executes useful automated actions such as web searches, time/date inquiries, Wikipedia lookups, and media playback.
+AURA is a modern, aesthetic desktop-based Voice and Text Assistant built with Python. It features a sleek cyber-dark mode GUI, real-time speech-to-text input, and synchronized audio-visual responses.
 
 ## 🚀 Features
-- **Speech Recognition:** Captures live voice input from the microphone using Google's speech recognition API.
-- **Text-to-Speech Feedback:** Responds back to the user via an offline voice synthesis engine (`pyttsx3`).
-- **Dynamic Web Actions:** Opens popular platforms like Google, YouTube, GitHub, and Facebook directly via browser automation.
-- **Information Retrieval:** Fetches real-time summaries of topics using the Wikipedia API.
-- **Productivity & Utilities:** Tells the current time and date on request, along with built-in casual entertainment features (like jokes).
-- **Interactive GUI:** Designed with an aesthetic dark-themed Tkinter dashboard featuring live status indicators (Idle, Listening, Processing).
 
----
+* **Dual Input Modes:** Interact via text typing or voice commands using the interactive microphone button (`🎙️ Speak`).
+* **Audio-Visual Synchronization:** Assistant responses are displayed in the chat interface and spoken aloud simultaneously using `pyttsx3`.
+* **Web Automation:** Instantly open popular websites like Google, YouTube, Facebook, GitHub, and Stack Overflow.
+* **System Control:** Quickly launch local applications like Notepad, Calculator, and Command Prompt.
+* **Knowledge Retrieval:** Fetch real-time date/time info and quick summaries from Wikipedia.
+* **Smart Fallback:** Automatically perform a Google web search if a custom command is not recognized.
+* **Aesthetic Dark Mode UI:** Clean, modern cyber-dark interface built using `tkinter`.
 
-## 🛠️ Tech Stack & Requirements
-- **Language:** Python 3.x
-- **GUI Framework:** Tkinter (Standard Library)
-- **Audio & Speech:** `speech_recognition`, `pyttsx3`, `pyaudio`
-- **Automation & APIs:** `webbrowser`, `wikipedia`, `requests`
+## 🛠️ Tech Stack
 
-### Installation
-Install the required dependencies via terminal:
-```bash
-pip install -r requirements.txt
+* **Language:** Python 3.11+
+* **GUI Framework:** `tkinter` (ScrolledText, Entry, Custom Layouts)
+* **Text-to-Speech (TTS):** `pyttsx3`
+* **Speech Recognition:** `speech_recognition` (Google Speech API)
+* **Automation & Tools:** `webbrowser`, `subprocess`, `wikipedia`, `datetime`
+
+## 📦 Installation & Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone [https://github.com/your-username/Python-Task1-VoiceAssistant.git](https://github.com/your-username/Python-Task1-VoiceAssistant.git)
+   cd Python-Task1-VoiceAssistant
