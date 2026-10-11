@@ -4,8 +4,7 @@ This repository contains all the Python tasks completed during my internship at 
 
 ## 📁 Included Projects
 
-1. **Python-Task1-VoiceAssistant** - Voice Assistant Application (AURA)
+1. **Python-Task1-VoiceAssistant**- Voice Assistant Application (AURA)
 2. **Python-Task2-BMICalculator** - Body Mass Index (BMI) Calculator
 3. **Python-Task4-WeatherApp** - Weather Application with GUI
-
-*Created by [rimi-147](https://github.com/rimi-147)*
+Created by [diptibasak-dev](https://github.com/diptibasak-dev)
